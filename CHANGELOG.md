@@ -2,6 +2,17 @@
 
 <!-- towncrier release notes start -->
 
+<a name="release-1-9-3"></a>
+
+## 1.9.3 (2026-11-06)
+
+<a name="release-1-9-3-fixed"></a>
+
+### Fixed
+
+- Expand factor expressions in `[gh.python]` environment lists so each matching environment runs
+  ([#330](https://github.com/tox-dev/tox-gh/pull/330)) by [@gaborbernat](https://github.com/gaborbernat).
+
 <a name="release-1-9-2"></a>
 
 ## 1.9.2 (2026-11-04)
