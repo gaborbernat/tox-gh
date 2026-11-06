@@ -207,6 +207,35 @@ def test_gh_single_env_ok(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreat
     assert len(summary_text) == 0
 
 
+def test_gh_expands_toml_factors(
+    monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator, summary_output_path: Path
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.delenv("TOXENV", raising=False)
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    project = tox_project({
+        "tox.toml": f"""
+            [tox]
+            env_list = [{{ product = [["unit", "lint"], ["{version}"]] }}]
+
+            [env_run_base]
+            package = "skip"
+
+            [gh.python]
+            "{version}" = ["{{unit,lint}}-{version}"]
+            """,
+    })
+    result = project.run()
+    result.assert_success()
+    assert f"ROOT: tox-gh set unit-{version}, lint-{version}" in result.out
+    assert f"unit-{version}: OK" in result.out
+    assert f"lint-{version}: OK" in result.out
+    assert summary_output_path.read_text(encoding="utf-8").splitlines() == [
+        f":white_check_mark:: unit-{version}",
+        f":white_check_mark:: lint-{version}",
+    ]
+
+
 @pytest.mark.parametrize(
     ("free_threaded", "expected"),
     [

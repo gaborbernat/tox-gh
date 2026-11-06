@@ -15,6 +15,7 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
+from tox.config.loader.ini.factor import extend_factors
 from tox.config.loader.memory import MemoryLoader
 from tox.config.loader.section import Section
 from tox.config.sets import ConfigSet
@@ -99,6 +100,7 @@ def tox_add_core_config(core_conf: ConfigSet, state: State) -> None:
     python_version_keys = get_python_version_keys()
     env_list = next((python_mapping[i] for i in python_version_keys if i in python_mapping), None)
     if env_list is not None:  # override the env_list core configuration with our values
+        env_list = EnvList([env for expression in env_list for env in extend_factors(expression)])
         logging.warning("tox-gh set %s", ", ".join(env_list))
         state.conf.core.loaders.insert(0, MemoryLoader(env_list=env_list))
         WILL_RUN_MULTIPLE_ENVS = len(env_list.envs) > 1
