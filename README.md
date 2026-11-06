@@ -147,8 +147,8 @@ python =
 
 Now the Python 3.13 job will run three tox environments sequentially: `py313`, `type`, and `lint`.
 
-When using factored environments (e.g., `py313-django{50,51}`), list the full env names since tox-gh **replaces** the
-envlist rather than filtering it:
+When using factored environments (e.g., `py313-django{50,51}`), include the factors in the mapping. tox-gh expands them
+and replaces the tox `env_list` with the resulting names:
 
 ```toml
 [gh.python]
@@ -271,9 +271,8 @@ python =
 use `"3.14"`, `"3.13"`, `"3.12"`, `"3.11"`, or `"3.10"`. Major-only fallbacks use `"3"`. PyPy versions use
 `"pypy-3.13"`, `"pypy-3"`, or `"pypy3"`. Pyston versions use `"piston-3.13"` or `"pyston-3"`.
 
-**Behavior**: The matched environment list **replaces** the tox `env_list` entirely. It does not filter the existing
-envlist. When using factored environments, you must specify the full env names (generative syntax like `{50,51}` is
-supported).
+**Behavior**: The matched environment list replaces the tox `env_list` entirely. It does not filter the existing list.
+Factor expressions such as `{unit,lint}-3.15` expand to separate environment names.
 
 **Examples** (`tox.toml`):
 
