@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -14,17 +13,16 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from pytest_mock import MockerFixture
     from tox.pytest import MonkeyPatch, ToxProjectCreator
 
 
 @pytest.fixture(autouse=True)
-def _clear_env_var() -> Iterator[None]:
-    original = os.environ.pop("TOX_GH_MAJOR_MINOR", None)
+def _clear_env_var(monkeypatch: MonkeyPatch) -> Iterator[None]:
+    monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
     yield
-    if original is not None:
-        os.environ["TOX_GH_MAJOR_MINOR"] = original
-    else:
-        os.environ.pop("TOX_GH_MAJOR_MINOR", None)
+    # the plugin exports the variable itself, and tox's environment check runs before monkeypatch restores it
+    os.environ.pop("TOX_GH_MAJOR_MINOR", None)
 
 
 @pytest.fixture
@@ -37,16 +35,14 @@ def summary_output_path(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
 
 def test_gh_not_in_actions(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-    project = tox_project({"tox.ini": "[testenv]\npackage=skip"})
-    result = project.run("-vv")
+    result = tox_project({"tox.ini": "[testenv]\npackage=skip"}).run("-vv")
     result.assert_success()
     assert "tox-gh won't override envlist because tox is not running in GitHub Actions" in result.out
 
 
 def test_gh_not_in_actions_quiet(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-    project = tox_project({"tox.ini": "[testenv]\npackage=skip"})
-    result = project.run()
+    result = tox_project({"tox.ini": "[testenv]\npackage=skip"}).run()
     result.assert_success()
     assert "tox-gh won't override envlist because tox is not running in GitHub Actions" not in result.out
 
@@ -54,8 +50,7 @@ def test_gh_not_in_actions_quiet(monkeypatch: MonkeyPatch, tox_project: ToxProje
 def test_gh_e_flag_set(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.delenv("TOXENV", raising=False)
-    project = tox_project({"tox.ini": "[testenv]\npackage=skip"})
-    result = project.run("-e", "py", "-vv")
+    result = tox_project({"tox.ini": "[testenv]\npackage=skip"}).run("-e", "py", "-vv")
     result.assert_success()
     assert "tox-gh won't override envlist because envlist is explicitly given via -e flag" in result.out
 
@@ -63,8 +58,7 @@ def test_gh_e_flag_set(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator)
 def test_gh_toxenv_set(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("TOXENV", "py")
-    project = tox_project({"tox.ini": "[testenv]\npackage=skip"})
-    result = project.run("-vv")
+    result = tox_project({"tox.ini": "[testenv]\npackage=skip"}).run("-vv")
     result.assert_success()
     assert "tox-gh won't override envlist because envlist is explicitly given via TOXENV" in result.out
 
@@ -72,65 +66,69 @@ def test_gh_toxenv_set(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator)
 def test_gh_no_matching_python_mapping(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.delenv("TOXENV", raising=False)
-    project = tox_project({"tox.ini": "[testenv]\npackage=skip\n[gh]\npython=\n    0=a"})
-    result = project.run()
+    result = tox_project({"tox.ini": "[testenv]\npackage=skip\n[gh]\npython=\n    0=a"}).run()
     result.assert_success()
     assert "running tox-gh" in result.out
     assert "tox-gh set" not in result.out
 
 
-@pytest.mark.parametrize("via_env", [True, False])
+@pytest.mark.parametrize(
+    "version_env",
+    [
+        pytest.param(f"{sys.version_info.major}.{sys.version_info.minor}", id="env-var"),
+        pytest.param("", id="detected"),
+    ],
+)
 def test_gh_ok(
-    monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator, tmp_path: Path, summary_output_path: Path, via_env: bool
+    monkeypatch: MonkeyPatch,
+    mocker: MockerFixture,
+    tox_project: ToxProjectCreator,
+    summary_output_path: Path,
+    version_env: str,
 ) -> None:
-    if via_env:
-        os.environ["TOX_GH_MAJOR_MINOR"] = f"{sys.version_info.major}.{sys.version_info.minor}"
-    else:
-        monkeypatch.setenv("PATH", "")
-    empty_requirements = tmp_path / "empty.txt"
-    empty_requirements.touch()
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setenv("TOX_GH_MAJOR_MINOR", version_env)
     monkeypatch.delenv("TOXENV", raising=False)
     ini = f"""
     [testenv]
     package = editable
-    deps = -r {empty_requirements}
+    deps = -r empty.txt
     [gh]
     python =
         {sys.version_info[0]} = a, b
     """
-    project = tox_project({"tox.ini": ini})
-    result = project.run()
+    result = tox_project({"tox.ini": ini, "empty.txt": ""}).run()
     result.assert_success()
     assert result.out.splitlines() == [
         "ROOT: running tox-gh",
         "ROOT: tox-gh set a, b",
         "::group::tox:install",
-        f"a: install_deps> python -I -m pip install -r {empty_requirements}",
-        ANY,  # pip install setuptools wheel
-        ANY,  # .pkg: _optional_hooks
-        ANY,  # .pkg: get_requires_for_build_editable
+        "a: install_deps> python -I -m pip install -r empty.txt",
+        mocker.ANY,  # pip install setuptools wheel
+        mocker.ANY,  # .pkg: _optional_hooks
+        mocker.ANY,  # .pkg: get_requires_for_build_editable
         ".pkg: freeze> python -m pip freeze --all",
-        ANY,  # freeze list
-        ANY,  # .pkg: build_editable
-        ANY,  # a: install_package
+        mocker.ANY,  # freeze list
+        mocker.ANY,  # .pkg: build_editable
+        mocker.ANY,  # a: install_package
         "a: freeze> python -m pip freeze --all",
-        ANY,  # freeze list
+        mocker.ANY,  # freeze list
         "::endgroup::",
         "::group::tox:a",
         "::endgroup::",
-        ANY,  # a finished
+        mocker.ANY,  # a finished
         "::group::tox:install",
-        f"b: install_deps> python -I -m pip install -r {empty_requirements}",
-        ANY,  # b: install_package
+        "b: install_deps> python -I -m pip install -r empty.txt",
+        mocker.ANY,  # b: install_package
         "b: freeze> python -m pip freeze --all",
-        ANY,  # freeze list
+        mocker.ANY,  # freeze list
         "::endgroup::",
         "::group::tox:b",
         "::endgroup::",
-        ANY,  # a status
-        ANY,  # b status
-        ANY,  # outcome
+        mocker.ANY,  # a status
+        mocker.ANY,  # b status
+        mocker.ANY,  # outcome
     ]
 
     assert "a: OK" in result.out
@@ -141,7 +139,9 @@ def test_gh_ok(
     assert ":white_check_mark:: b" in summary_text
 
 
-def test_gh_fail(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator, summary_output_path: Path) -> None:
+def test_gh_fail(
+    monkeypatch: MonkeyPatch, mocker: MockerFixture, tox_project: ToxProjectCreator, summary_output_path: Path
+) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.delenv("TOXENV", raising=False)
     ini = f"""
@@ -152,8 +152,7 @@ def test_gh_fail(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator, summa
     python =
         {sys.version_info[0]} = a, b
     """
-    project = tox_project({"tox.ini": ini})
-    result = project.run()
+    result = tox_project({"tox.ini": ini}).run()
     result.assert_failed()
 
     assert result.out.splitlines() == [
@@ -161,24 +160,24 @@ def test_gh_fail(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator, summa
         "ROOT: tox-gh set a, b",
         "::group::tox:install",
         "a: freeze> python -m pip freeze --all",
-        ANY,  # freeze list
+        mocker.ANY,  # freeze list
         "::endgroup::",
         "::group::tox:a",
-        ANY,  # "a: commands[0]> python -c 'exit(1)'", but without the quotes on Windows.
-        ANY,  # process details
+        mocker.ANY,  # "a: commands[0]> python -c 'exit(1)'", but without the quotes on Windows.
+        mocker.ANY,  # process details
         "::endgroup::",
-        ANY,  # a finished
+        mocker.ANY,  # a finished
         "::group::tox:install",
         "b: freeze> python -m pip freeze --all",
-        ANY,  # freeze list
+        mocker.ANY,  # freeze list
         "::endgroup::",
         "::group::tox:b",
-        ANY,  # "b: commands[0]> python -c 'exit(1)'", but without the quotes on Windows.
-        ANY,  # b process details
+        mocker.ANY,  # "b: commands[0]> python -c 'exit(1)'", but without the quotes on Windows.
+        mocker.ANY,  # b process details
         "::endgroup::",
-        ANY,  # a status
-        ANY,  # b status
-        ANY,  # outcome
+        mocker.ANY,  # a status
+        mocker.ANY,  # b status
+        mocker.ANY,  # outcome
     ]
 
     assert "a: FAIL code 1" in result.out
@@ -199,9 +198,7 @@ def test_gh_single_env_ok(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreat
     python =
         {sys.version_info[0]} = a
     """
-    project = tox_project({"tox.ini": ini})
-    result = project.run()
-    result.assert_success()
+    tox_project({"tox.ini": ini}).run().assert_success()
 
     summary_text = summary_output_path.read_text(encoding="utf-8")
     assert len(summary_text) == 0
@@ -243,24 +240,27 @@ def test_gh_expands_toml_factors(
         pytest.param(False, ["3.13", "3"], id="standard"),
     ],
 )
-def test_freethreaded_python_detection(monkeypatch: MonkeyPatch, free_threaded: bool, expected: list[str]) -> None:
+def test_freethreaded_python_detection(
+    monkeypatch: MonkeyPatch, mocker: MockerFixture, free_threaded: bool, expected: list[str]
+) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
-    mock_info = MagicMock()
-    mock_info.version_info = (3, 13, 1, "final", 0)
-    mock_info.implementation = "CPython"
-    mock_info.free_threaded = free_threaded
-    with patch.object(plugin, "PythonInfo") as mock_cls:
-        mock_cls.from_exe.return_value = mock_info
-        result = get_python_version_keys()
+    mock_info = mocker.create_autospec(
+        plugin.PythonInfo,
+        instance=True,
+        version_info=(3, 13, 1, "final", 0),
+        implementation="CPython",
+        free_threaded=free_threaded,
+    )
+    mocker.patch.object(plugin.PythonInfo, "from_exe", autospec=True, return_value=mock_info)
+    result = get_python_version_keys()
     assert result == expected
 
 
-def test_python_detection_fails(monkeypatch: MonkeyPatch) -> None:
+def test_python_detection_fails(monkeypatch: MonkeyPatch, mocker: MockerFixture) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
-    with patch.object(plugin, "PythonInfo") as mock_cls:
-        mock_cls.from_exe.return_value = None
-        with pytest.raises(RuntimeError, match="failed to detect Python version"):
-            get_python_version_keys()
+    mocker.patch.object(plugin.PythonInfo, "from_exe", autospec=True, return_value=None)
+    with pytest.raises(RuntimeError, match="failed to detect Python version"):
+        get_python_version_keys()
 
 
 def test_override_sets_tox_gh_major_minor(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
@@ -273,8 +273,7 @@ def test_override_sets_tox_gh_major_minor(monkeypatch: MonkeyPatch, tox_project:
     python =
         {sys.version_info[0]}.{sys.version_info[1]} = a
     """
-    project = tox_project({"tox.ini": ini})
-    result = project.run()
+    result = tox_project({"tox.ini": ini}).run()
     result.assert_success()
     assert "tox-gh set a" in result.out
     assert os.environ.get("TOX_GH_MAJOR_MINOR") == f"{sys.version_info[0]}.{sys.version_info[1]}"
@@ -293,9 +292,7 @@ def test_gh_single_env_fail(
     python =
         {sys.version_info[0]} = a
     """
-    project = tox_project({"tox.ini": ini})
-    result = project.run()
-    result.assert_failed()
+    tox_project({"tox.ini": ini}).run().assert_failed()
 
     summary_text = summary_output_path.read_text(encoding="utf-8")
     assert len(summary_text) == 0
