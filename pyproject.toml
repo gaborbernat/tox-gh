@@ -127,31 +127,25 @@ lint.select = [
 ]
 lint.ignore = [
   "CPY",                                       # No copyright statements
-  "DOC",                                       # not supported
-  "escape-sequence-in-docstring",              # Use `r"""` if any backslashes in a docstring
-  "hardcoded-bind-all-interfaces",             # Possible binding to all interface
-  "incorrect-blank-line-before-class",         # `one-blank-line-before-class` (D203) and `no-blank-line-before-class` (D211) are incompatible
-  "missing-blank-line-after-summary",          # 1 blank line required between summary line and description
+  "docstring-missing-exception",               # simplint checks reST :raises: fields
+  "docstring-missing-returns",                 # simplint checks reST :returns: fields
+  "docstring-missing-yields",                  # simplint checks reST :yields: fields
+  "incorrect-blank-line-before-class",         # Conflicts with `blank-line-before-class`
   "missing-trailing-comma",                    # Conflict with formatter
-  "multi-line-summary-first-line",             # `multi-line-summary-first-line` (D212) and `multi-line-summary-second-line` (D213) are incompatible
-  "non-imperative-mood",                       # First line of docstring should be in imperative mood
-  "root-logger-call",                          # call on root logger
+  "multi-line-summary-first-line",             # Conflicts with `multi-line-summary-second-line`
   "single-line-implicit-string-concatenation", # Conflict with formatter
-  "undocumented-magic-method",                 # undocumented-public-api (simplint SMP903) covers the public API instead
-  "undocumented-public-class",                 # undocumented-public-api (simplint SMP903) covers the public API instead
-  "undocumented-public-function",              # undocumented-public-api (simplint SMP903) covers the public API instead
-  "undocumented-public-init",                  # undocumented-public-api (simplint SMP903) covers the public API instead
-  "undocumented-public-method",                # undocumented-public-api (simplint SMP903) covers the public API instead
-  "undocumented-public-nested-class",          # undocumented-public-api (simplint SMP903) covers the public API instead
+  "undocumented-magic-method",                 # undocumented-public-api (simplint) covers the public API instead
+  "undocumented-public-class",                 # undocumented-public-api (simplint) covers the public API instead
+  "undocumented-public-function",              # undocumented-public-api (simplint) covers the public API instead
+  "undocumented-public-init",                  # undocumented-public-api (simplint) covers the public API instead
+  "undocumented-public-method",                # undocumented-public-api (simplint) covers the public API instead
+  "undocumented-public-nested-class",          # undocumented-public-api (simplint) covers the public API instead
 ]
 lint.per-file-ignores."tests/**/*.py" = [
-  "assert",                               # asserts allowed in tests
-  "D",                                    # don't care about documentation in tests
-  "FBT",                                  # don't care about booleans as positional arguments in tests
-  "implicit-namespace-package",           # no implicit namespace
-  "magic-value-comparison",               # Magic value used in comparison, consider replacing with a constant variable
-  "pytest-fixture-autouse",               # shared setup fixtures are meant to apply to every test
-  "subprocess-without-shell-equals-true", # `subprocess` call: check for execution of untrusted input
+  "assert",                     # asserts allowed in tests
+  "D",                          # don't care about documentation in tests
+  "implicit-namespace-package", # no implicit namespace
+  "pytest-fixture-autouse",     # shared setup fixtures are meant to apply to every test
 ]
 lint.isort = { known-first-party = [
   "tox_gh",
@@ -163,7 +157,6 @@ lint.preview = true
 
 [tool.codespell]
 builtin = "clear,usage,en-GB_to_en-US"
-ignore-words-list = "cancelled"
 write-changes = true
 count = true
 

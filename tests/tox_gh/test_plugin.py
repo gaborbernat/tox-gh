@@ -5,8 +5,8 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from virtualenv.discovery.py_info import PythonInfo
 
-from tox_gh import plugin
 from tox_gh.plugin import get_python_version_keys
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ def _clear_env_var(monkeypatch: MonkeyPatch) -> Iterator[None]:
 def summary_output_path(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     path = tmp_path / "gh_out"
     path.touch()
-    monkeypatch.setattr(plugin, "GITHUB_STEP_SUMMARY", str(path))
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(path))
     return path
 
 
@@ -241,24 +241,24 @@ def test_gh_expands_toml_factors(
     ],
 )
 def test_freethreaded_python_detection(
-    monkeypatch: MonkeyPatch, mocker: MockerFixture, free_threaded: bool, expected: list[str]
+    monkeypatch: MonkeyPatch, mocker: MockerFixture, *, free_threaded: bool, expected: list[str]
 ) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
     mock_info = mocker.create_autospec(
-        plugin.PythonInfo,
+        PythonInfo,
         instance=True,
         version_info=(3, 13, 1, "final", 0),
         implementation="CPython",
         free_threaded=free_threaded,
     )
-    mocker.patch.object(plugin.PythonInfo, "from_exe", autospec=True, return_value=mock_info)
+    mocker.patch.object(PythonInfo, "from_exe", autospec=True, return_value=mock_info)
     result = get_python_version_keys()
     assert result == expected
 
 
 def test_python_detection_fails(monkeypatch: MonkeyPatch, mocker: MockerFixture) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
-    mocker.patch.object(plugin.PythonInfo, "from_exe", autospec=True, return_value=None)
+    mocker.patch.object(PythonInfo, "from_exe", autospec=True, return_value=None)
     with pytest.raises(RuntimeError, match="failed to detect Python version"):
         get_python_version_keys()
 
