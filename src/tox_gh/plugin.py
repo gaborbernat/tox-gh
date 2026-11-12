@@ -28,8 +28,8 @@ if TYPE_CHECKING:
     from tox.session.state import State
     from tox.tox_env.api import ToxEnv
 
-GITHUB_STEP_SUMMARY: Final[str] = os.getenv("GITHUB_STEP_SUMMARY", "")
 _WILL_RUN_MULTIPLE_ENVS = False
+_LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
 
 
 @impl
@@ -53,10 +53,10 @@ def tox_add_core_config(core_conf: ConfigSet, state: State) -> None:
     elif getattr(state.conf.options.env, "is_default_list", False) is False:
         bail_reason = f"envlist is explicitly given via {'TOXENV' if os.environ.get('TOXENV', '') else '-e flag'}"
     if bail_reason is not None:
-        logging.debug("tox-gh won't override envlist because %s", bail_reason)
+        _LOGGER.debug("tox-gh won't override envlist because %s", bail_reason)
         return
 
-    logging.warning("running tox-gh")
+    _LOGGER.warning("running tox-gh")
     gh_config = state.conf.get_section_config(Section(None, "gh"), base=[], of_type=_GhActionsConfigSet, for_env=None)
     python_mapping = cast("dict[str, EnvList]", gh_config["python"])
 
@@ -65,7 +65,7 @@ def tox_add_core_config(core_conf: ConfigSet, state: State) -> None:
         env_list := next((python_mapping[i] for i in python_version_keys if i in python_mapping), None)
     ) is not None:  # override the env_list core configuration with our values
         env_list = EnvList([env for expression in env_list for env in extend_factors(expression)])
-        logging.warning("tox-gh set %s", ", ".join(env_list))
+        _LOGGER.warning("tox-gh set %s", ", ".join(env_list))
         state.conf.core.loaders.insert(0, MemoryLoader(env_list=env_list))
         _WILL_RUN_MULTIPLE_ENVS = len(env_list.envs) > 1
         if not os.environ.get("TOX_GH_MAJOR_MINOR", ""):
@@ -148,7 +148,6 @@ def tox_after_run_commands(tox_env: ToxEnv, exit_code: int, outcomes: list[Outco
     """
     Run logic before after run commands.
 
-
     :param tox_env: the tox environment
     :param exit_code: command exit code
     :param outcomes: list of outcomes
@@ -156,16 +155,15 @@ def tox_after_run_commands(tox_env: ToxEnv, exit_code: int, outcomes: list[Outco
     if tox_env.core["is_on_gh_action"]:
         print("::endgroup::")  # ruff:ignore[print] GitHub reads workflow commands from stdout
         if _WILL_RUN_MULTIPLE_ENVS:
-            _write_to_summary(exit_code == Outcome.OK, tox_env.name)
+            _write_to_summary(success=exit_code == Outcome.OK, message=tox_env.name)
 
 
-def _write_to_summary(success: bool, message: str) -> None:  # ruff:ignore[boolean-type-hint-positional-argument] the flag reads as the run outcome at the call site
+def _write_to_summary(*, success: bool, message: str) -> None:
     # GITHUB_STEP_SUMMARY is only set inside a GitHub Actions step, so elsewhere there is no summary to write to.
-    if not GITHUB_STEP_SUMMARY:
+    if not (summary_path := os.getenv("GITHUB_STEP_SUMMARY", "")):
         return
-    summary_path = pathlib.Path(GITHUB_STEP_SUMMARY)
     success_str = ":white_check_mark:" if success else ":negative_squared_cross_mark:"
-    with summary_path.open("a+", encoding="utf-8") as summary_file:
+    with pathlib.Path(summary_path).open("a+", encoding="utf-8") as summary_file:
         print(f"{success_str}: {message}", file=summary_file)
 
 
