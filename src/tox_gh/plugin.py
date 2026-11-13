@@ -60,7 +60,7 @@ def tox_add_core_config(core_conf: ConfigSet, state: State) -> None:
     gh_config = state.conf.get_section_config(Section(None, "gh"), base=[], of_type=_GhActionsConfigSet, for_env=None)
     python_mapping = cast("dict[str, EnvList]", gh_config["python"])
 
-    python_version_keys = get_python_version_keys()
+    python_version_keys = _get_python_version_keys()
     if (
         env_list := next((python_mapping[i] for i in python_version_keys if i in python_mapping), None)
     ) is not None:  # override the env_list core configuration with our values
@@ -83,13 +83,7 @@ class _GhActionsConfigSet(ConfigSet):
         )
 
 
-def get_python_version_keys() -> list[str]:
-    """
-    Get the python spec keys matching the running interpreter.
-
-    :returns: python spec keys, most specific first
-    :raises RuntimeError: if the Python version cannot be detected
-    """
+def _get_python_version_keys() -> list[str]:
     if os.environ.get("TOX_GH_MAJOR_MINOR", ""):
         major_minor_version = os.environ["TOX_GH_MAJOR_MINOR"]
         return [major_minor_version, major_minor_version.split(".")[0]]
@@ -167,6 +161,4 @@ def _write_to_summary(*, success: bool, message: str) -> None:
         print(f"{success_str}: {message}", file=summary_file)
 
 
-__all__ = [
-    "get_python_version_keys",
-]
+__all__: list[str] = []

@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 import pytest
 from virtualenv.discovery.py_info import PythonInfo
 
-from tox_gh.plugin import get_python_version_keys
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
@@ -236,12 +234,17 @@ def test_gh_expands_toml_factors(
 @pytest.mark.parametrize(
     ("free_threaded", "expected"),
     [
-        pytest.param(True, ["3.13t", "3.13", "3"], id="freethreaded"),
-        pytest.param(False, ["3.13", "3"], id="standard"),
+        pytest.param(True, "threaded", id="freethreaded"),
+        pytest.param(False, "standard", id="standard"),
     ],
 )
 def test_freethreaded_python_detection(
-    monkeypatch: MonkeyPatch, mocker: MockerFixture, *, free_threaded: bool, expected: list[str]
+    monkeypatch: MonkeyPatch,
+    mocker: MockerFixture,
+    tox_project: ToxProjectCreator,
+    *,
+    free_threaded: bool,
+    expected: str,
 ) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
     mock_info = mocker.create_autospec(
@@ -251,16 +254,23 @@ def test_freethreaded_python_detection(
         implementation="CPython",
         free_threaded=free_threaded,
     )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     mocker.patch.object(PythonInfo, "from_exe", autospec=True, return_value=mock_info)
-    result = get_python_version_keys()
-    assert result == expected
+    result = tox_project({
+        "tox.ini": "[testenv]\npackage=skip\n[gh]\npython=\n    3.13t=threaded\n    3.13=standard"
+    }).run("-l")
+    result.assert_success()
+    assert f"tox-gh set {expected}" in result.out
 
 
-def test_python_detection_fails(monkeypatch: MonkeyPatch, mocker: MockerFixture) -> None:
+def test_python_detection_fails(
+    monkeypatch: MonkeyPatch, mocker: MockerFixture, tox_project: ToxProjectCreator
+) -> None:
     monkeypatch.delenv("TOX_GH_MAJOR_MINOR", raising=False)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     mocker.patch.object(PythonInfo, "from_exe", autospec=True, return_value=None)
     with pytest.raises(RuntimeError, match="failed to detect Python version"):
-        get_python_version_keys()
+        tox_project({"tox.ini": "[testenv]\npackage=skip\n[gh]\npython=\n    3=selected"}).run()
 
 
 def test_override_sets_tox_gh_major_minor(monkeypatch: MonkeyPatch, tox_project: ToxProjectCreator) -> None:
